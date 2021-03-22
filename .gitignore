@@ -6,3 +6,4 @@ Pipfile
 Pipfile.lock
 .vscode
 .config
+__pycache__
