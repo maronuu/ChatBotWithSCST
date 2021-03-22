@@ -3,6 +3,7 @@ import sys
 import argparse
 import configparser
 import logging
+import threading
 
 import torch
 import telegram
@@ -25,7 +26,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 CPU = torch.device('cpu')
 
 def start(update, context):
-    update.message.reply_text('Hi!')
+    update.message.reply_text("Hi!")
 
 def echo(update, context):
     update.message.reply_text(update.message.text)
@@ -90,6 +91,15 @@ if __name__ == '__main__':
             update.message.reply_text(responce)
 
     dp.add_handler(MessageHandler(Filters.text, bot_func))
+    # stop functions
+    def shutdown():
+        updater.stop()
+        updater.is_idle = False
+    def stop(update, context):
+        update.message.reply_text("Good bye!")
+        threading.Thread(target=logging.shutdown).start()
+    dp.add_handler(CommandHandler('stop', stop))
+    
     log.info("Bot is running")
     updater.start_polling()
     updater.idle()
