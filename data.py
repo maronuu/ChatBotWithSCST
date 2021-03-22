@@ -13,7 +13,7 @@ import torch.nn.utils.rnn as rnn_utils
 import torch.nn.functional as F
 
 import cornell_movies_corpus_handler
-import utils
+
 
 
 ### LIMITATION
