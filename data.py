@@ -99,7 +99,8 @@ def save_emb_dict(save_dir, emb_dict):
 
 def load_emb_dict(load_dir):
     with open(os.path.join(load_dir, EMB_DICT_NAME), 'rb') as f:
-        cloudpickle.load(f)
+        return cloudpickle.load(f)
+
 
 
 ### Related to training data
