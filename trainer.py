@@ -1,6 +1,4 @@
 import os
-import sys
-import argparse
 import logging
 import random
 
@@ -10,7 +8,6 @@ from tensorboardX import SummaryWriter
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
-from ptan.common.utils import TBMeanTracker
 
 from . import utils, model, data
 
@@ -19,7 +16,7 @@ IMAGE_DIR = 'images'
 
 
 class TrainerCrossEntropy:
-    def __init__(self, genre, use_cuda, name_of_run, log, model, batch_size, lr, n_epochs):   
+    def __init__(self, genre, use_cuda, name_of_run, log, batch_size, lr, n_epochs):   
         is_cuda_available = torch.cuda.is_available()
         if (not is_cuda_available) and use_cuda:
             raise RuntimeError("GPU is not available, but you tried to use it.")
@@ -52,7 +49,11 @@ class TrainerCrossEntropy:
         self.log.info(f"Training data: {len(self.train_data)} | Test data: {len(self.test_data)}")
 
         # define model
-        self.net = model
+        self.net = model.Seq2seqModel(
+            embedding_dim=model.EMBEDDING_DIM,
+            hidden_size=model.HIDDEN_SIZE,
+            dict_size=len(self.emb_dict),
+        )
         log.info(f"Model: {self.net.__repr__}")
 
         # Summary Writer
@@ -62,7 +63,7 @@ class TrainerCrossEntropy:
         self.lr = lr
         self.optimizer = optim.Adam(self.net.parameters(), lr=self.lr)
 
-    def run_test(self):
+    def _run_test(self):
         eof = self.emb_dict[data.END]
         total_bleu = 0.
         num_bleu = 0
@@ -159,7 +160,7 @@ class TrainerCrossEntropy:
             # scores
             loss = np.mean(loss_list)
             bleu_score_train = total_bleu / num_bleu
-            bleu_score_test = self.run_test()
+            bleu_score_test = self._run_test()
             loss_record.append(loss)
             bleu_train_record.append(bleu_score_train)
             bleu_test_record.append(bleu_score_test)
@@ -186,7 +187,7 @@ class TrainerCrossEntropy:
 
 
 class TrainerReinforce:
-    def __init__(self, genre, use_cuda, name_of_run, log, model, model_path, n_samples, batch_size, lr, n_epochs):
+    def __init__(self, genre, use_cuda, name_of_run, log, model_path, n_samples, batch_size, lr, n_epochs):
         is_cuda_available = torch.cuda.is_available()
         if (not is_cuda_available) and use_cuda:
             raise RuntimeError("GPU is not available, but you tried to use it.")
@@ -224,7 +225,11 @@ class TrainerReinforce:
         self.log.info(f"Training data: {len(self.train_data)} | Test data: {len(self.test_data)}")
 
         # define model
-        self.net = model
+        self.net = model.Seq2seqModel(
+            embedding_dim=model.EMBEDDING_DIM,
+            hidden_size=model.HIDDEN_SIZE,
+            dict_size=len(self.emb_dict)
+        )
         self.log.info(f"Model: {self.net.__repr__}")
 
         # load model
@@ -239,7 +244,7 @@ class TrainerReinforce:
         self.lr = lr
         self.optimizer = None
 
-    def run_test(self):
+    def _run_test(self):
         eof = self.emb_dict[data.END]
         total_bleu = 0.
         num_bleu = 0
@@ -388,7 +393,7 @@ class TrainerReinforce:
             
             # train, test, mean loss
             bleu_score_train = np.mean(bleu_score_argmax_list)
-            bleu_score_test = self.run_test()
+            bleu_score_test = self._run_test()
             mean_loss = np.mean(loss_list)
             bleu_train_record.append(bleu_score_train)
             bleu_test_record.append(bleu_score_test)
