@@ -21,7 +21,8 @@ import data, utils, model
 log = logging.getLogger('run_bot')
 
 CONFIG_FILE_PATH = '.config/telegram_conf.ini'
-
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+CPU = torch.device('cpu')
 
 def start(update, context):
     update.message.reply_text('Hi!')
@@ -71,7 +72,7 @@ if __name__ == '__main__':
     def bot_func(update, context):
         tokens = utils.tokenize(update.message.text)
         seq = data.encode_words(tokens, emb_dict)
-        message = data.input_mat_to_packed(seq, net.embedding)
+        message = data.input_mat_to_packed(seq, net.embedding, CPU)
         hidden = net.encode(message)
         logits, actions = net.decode_sequences(
             hidden=hidden,
