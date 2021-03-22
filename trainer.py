@@ -9,7 +9,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 
-from . import utils, model, data
+import utils, model, data
 
 SAVE_DIR = 'saves'
 IMAGE_DIR = 'images'
@@ -34,7 +34,7 @@ class TrainerCrossEntropy:
         
         # save directory
         self.path_to_save_dir = os.path.join(SAVE_DIR, name_of_run)
-        os.mkdir(self.path_to_save_dir, exist_ok=True)
+        os.makedirs(self.path_to_save_dir, exist_ok=True)
 
         # load training data and embedding dict
         dialogues, self.emb_dict = data.load_dialogue_and_dict(
@@ -53,7 +53,7 @@ class TrainerCrossEntropy:
             embedding_dim=model.EMBEDDING_DIM,
             hidden_size=model.HIDDEN_SIZE,
             dict_size=len(self.emb_dict),
-        )
+        ).to(self.device)
         log.info(f"Model: {self.net.__repr__}")
 
         # Summary Writer
@@ -88,7 +88,7 @@ class TrainerCrossEntropy:
 
     def _plot_and_save_fig(self, yy, ylabel_name, fig_name, save_dir=IMAGE_DIR):
         if not os.path.isdir('./images'):
-            os.mkdir('./images')
+            os.makedirs('./images')
         xx = np.arange(0, len(yy), 1)
         plt.figure()
         plt.plot(xx, yy)
@@ -124,7 +124,8 @@ class TrainerCrossEntropy:
                 output_list = list()  # output list
                 ref_list = list()  # reference(target) list
                 for i, responce_seq in enumerate(packed_responce_seqs):
-                    hidden = (encoded[j][:, i:i+1].contiguous() for j in [0, 1])
+                    hidden = (encoded[0][:, i:i+1].contiguous(), encoded[1][:, i:i+1].contiguous())
+                    
                     ref_seq = responces[i][1:]  # omit first token.
 
                     if random.random() < 0.5:
@@ -138,7 +139,7 @@ class TrainerCrossEntropy:
                         out_g, actions = self.net.decode_sequences(
                             hidden=hidden,
                             length=len(ref_seq),
-                            init_emb=responce_seq[0:1],
+                            init_emb=responce_seq.data[0:1],
                             mode='argmax'
                         )
                         total_bleu += utils.calc_bleu_score_for_seq(actions, ref_seq)
@@ -149,7 +150,7 @@ class TrainerCrossEntropy:
                 
                 # concatenate all outputs from each batch.
                 out_tensor = torch.cat(output_list)
-                ref_tensor = torch.Tensor(ref_list).to(torch.long).to(self.device)
+                ref_tensor = torch.LongTensor(ref_list).to(self.device)
                 # update
                 self.optimizer.zero_grad()
                 loss_g = F.cross_entropy(out_tensor, ref_tensor)
@@ -175,8 +176,8 @@ class TrainerCrossEntropy:
                 data_path = os.path.join(
                     self.path_to_save_dir,
                     f"epoch_{epoch:.03d}_{bleu_score_train:.5f}_{bleu_score_test:.5f}.dat"
-                    torch.save(self.net.state_dict(), data_path)
                 )
+                torch.save(self.net.state_dict(), data_path)
 
         self.writer.close()
         # save record as figures.
@@ -204,7 +205,7 @@ class TrainerReinforce:
         
         # save directory
         self.path_to_save_dir = os.path.join(SAVE_DIR, name_of_run)
-        os.mkdir(self.path_to_save_dir, exist_ok=True)
+        os.makedirs(self.path_to_save_dir, exist_ok=True)
 
         # load training data and embedding dict
         dialogues, self.emb_dict = data.load_dialogue_and_dict(
@@ -229,7 +230,7 @@ class TrainerReinforce:
             embedding_dim=model.EMBEDDING_DIM,
             hidden_size=model.HIDDEN_SIZE,
             dict_size=len(self.emb_dict)
-        )
+        ).to(self.device)
         self.log.info(f"Model: {self.net.__repr__}")
 
         # load model
@@ -275,7 +276,7 @@ class TrainerReinforce:
 
     def _plot_and_save_fig(self, yy, ylabel_name, fig_name, save_dir=IMAGE_DIR):
         if not os.path.isdir('./images'):
-            os.mkdir('./images')
+            os.makedirs('./images')
         xx = np.arange(0, len(yy), 1)
         plt.figure()
         plt.plot(xx, yy)
@@ -373,8 +374,8 @@ class TrainerReinforce:
                     continue
                     
                 policy_t = torch.cat(policie_list)  # on GPU
-                actions_t = torch.Tensor(action_list).to(torch.long).to(self.device)
-                advantage_t = torch.Tensor(advantage_list).to(torch.float).to(self.device)
+                actions_t = torch.LongTensor(action_list).to(self.device)
+                advantage_t = torch.FloatTensor(advantage_list).to(self.device)
 
                 # Loss
                 log_prob_t = F.log_softmax(policy_t, dim=1)
@@ -417,8 +418,8 @@ class TrainerReinforce:
                 data_path = os.path.join(
                     self.path_to_save_dir,
                     f"epoch_{epoch:.03d}_{bleu_score_train:.5f}_{bleu_score_test:.5f}.dat"
-                    torch.save(self.net.state_dict(), data_path)
                 )
+                torch.save(self.net.state_dict(), data_path)
 
         self.writer.close()
         # save record as figures.

@@ -1,7 +1,7 @@
 import logging
 import os
 
-from . import utils
+import utils
 
 ### PATHS
 DATA_DIR = "data/cornell"
@@ -20,7 +20,7 @@ log = logging.getLogger("cornell_movies_corpus_handler")
 
 
 def helper_iterator(data_dir, file_name):
-    with open(os.path.join(data_dir, file_name, 'rb')) as f:
+    with open(os.path.join(data_dir, file_name), 'rb') as f:
         for line in f:
             line = str(line, encoding='utf-8', errors='ignore')
             line = [s.strip() for s in line.split(SEP_STRING)]

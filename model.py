@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.utils.rnn as rnn_utils
 import torch.nn.functional as F
 
-from . import utils
+import utils
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device('cuda' if USE_CUDA else 'cpu')
@@ -18,9 +18,7 @@ class Seq2seqModel(nn.Module):
 
         self.embedding = nn.Embedding(
             num_embeddings=dict_size,
-            hidden_size=hidden_size,
-            num_layers=1,
-            batch_first=True,
+            embedding_dim=embedding_dim,
         )
         self.encoder = nn.LSTM(
             input_size=embedding_dim,
@@ -47,7 +45,7 @@ class Seq2seqModel(nn.Module):
     
     def decode_train_data(self, hidden, input_seq):
         out, _ = self.decoder(input_seq, hidden)
-        out = self.output_layer(out)
+        out = self.output_layer(out.data)
 
         return out
     
@@ -70,8 +68,8 @@ class Seq2seqModel(nn.Module):
                 action = int(np.random.choice(
                     probs.shape[0], p=probs
                 ))
-                action_tensor = torch.Tensor(action).to(torch.long)
-                action_tensor = action_tensor.to(DEVICE)
+                action_tensor = torch.LongTensor([action])
+                action_tensor = action_tensor.to(init_emb.device)
                 
             elif mode == 'argmax':
                 action_tensor = torch.max(logit, dim=1)[1]

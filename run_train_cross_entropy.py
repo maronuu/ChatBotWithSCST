@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from . import trainer
+import trainer
 
 
 # HYPER PARAMETERS

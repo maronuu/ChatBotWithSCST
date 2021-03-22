@@ -1,7 +1,8 @@
 import logging
 import os
 import sys
-import pickle
+# import pickle
+import cloudpickle
 from collections import defaultdict, Counter
 from itertools import chain
 
@@ -11,8 +12,8 @@ import torch.nn as nn
 import torch.nn.utils.rnn as rnn_utils
 import torch.nn.functional as F
 
-from . import cornell_movies_corpus_handler
-from . import utils
+import cornell_movies_corpus_handler
+import utils
 
 
 ### LIMITATION
@@ -63,21 +64,22 @@ def encode_phrase_pairs(phrase_pair_list, emb_dict, exclude_unknown=True):
 def dialogues_to_phrase_pairs(dialogue_list, max_length=None):
     phrase_pair_list = list()
     for dialogue in dialogue_list:
-        phrase_stack = []
+        prev_phrase = None
         for i, cur_phrase in enumerate(dialogue):
-            if i % 2 == 0:
-                phrase_stack.append(cur_phrase)
-            else:
-                prev_phrase = phrase_stack.pop()
-                if max_length is None or (len(prev_phrase) <= max_length and len(cur_phrase) <= max_length):
-                    # if phrase pair meets with constraints, add it.
-                    phrase_pair_list.append((prev_phrase, cur_phrase))
+            if prev_phrase is None:
+                prev_phrase = cur_phrase
+                continue
+            
+            if max_length is None or (len(prev_phrase) <= max_length and len(cur_phrase) <= max_length):
+                # if phrase pair meets with constraints, add it.
+                phrase_pair_list.append((prev_phrase, cur_phrase))
+            prev_phrase = cur_phrase
     
     return phrase_pair_list  
 
 def generate_emb_dict(phrase_pair_list, freq_set):
-    emb_dict = defaultdict(lambda: -1)
-    # constants
+    emb_dict = dict()
+    # constant
     emb_dict[UNKNOWN] = 0
     emb_dict[BEGIN] = 1
     emb_dict[END] = 2
@@ -85,7 +87,7 @@ def generate_emb_dict(phrase_pair_list, freq_set):
     for phrase1, phrase2 in phrase_pair_list:
         word_list = [s.lower() for s in chain(phrase1, phrase2)]
         for word in word_list:
-            if emb_dict[word] == -1 and word in freq_set:
+            if word not in emb_dict and word in freq_set:
                 emb_dict[word] = idx
                 idx += 1
     
@@ -93,15 +95,17 @@ def generate_emb_dict(phrase_pair_list, freq_set):
 
 def save_emb_dict(save_dir, emb_dict):
     with open(os.path.join(save_dir, EMB_DICT_NAME), 'wb') as f:
-        pickle.dump(emb_dict, file=f)
+        cloudpickle.dump(emb_dict, f)
 
 def load_emb_dict(load_dir):
     with open(os.path.join(load_dir, EMB_DICT_NAME), 'rb') as f:
-        pickle.load(file=f)
+        cloudpickle.load(f)
 
 
 ### Related to training data
 def batch_iterator(data, batch_size):
+    assert isinstance(data, list)
+    assert isinstance(batch_size, int)
     i = 0
     while 1:
         batch = data[i * batch_size: (i + 1) * batch_size]
@@ -112,14 +116,15 @@ def batch_iterator(data, batch_size):
 
 def ph_ph_pairs_to_ph_phs_pairs(phrase_pairs):
     # phrase_pairs : input data.
-    phrase2phrase_list = defaultdict(lambda: [])
+    phrase2phrase_list = defaultdict(list)
     for phrase1, phrase2 in phrase_pairs:
-        phrase2phrase_list[phrase1].append(phrase2)
+        tmp = phrase2phrase_list[phrase1]
+        tmp.append(phrase2)
     phrase2phrase_list = list(phrase2phrase_list.items())
 
     return phrase2phrase_list
 
-def train_test_split(data, test_size=None, train_size=None, random_state=None, shuffle=True):
+def train_test_split(data, test_size=None, train_size=None):
     if test_size is None and train_size is None:
         test_size = 0.25
         train_size = 1 - test_size
@@ -134,41 +139,41 @@ def train_test_split(data, test_size=None, train_size=None, random_state=None, s
     num_train = int(num_data * train_size)
     return data[:num_train], data[num_train:]
 
-def pairs_to_packed_seq_without_out(batch, embedding, device='cpu'):
+def pairs_to_packed_seq_without_out(batch, embedding, device):
     batch_size = len(batch)
     batch.sort(key=lambda x: len(x[0]), reverse=True)
     questions, responces = zip(*batch)
     # padded matrix of questions
     lengths = [len(q) for q in questions]
-    question_mat = np.zeros((batch_size, lengths[0]))
+    question_mat = np.zeros((batch_size, lengths[0]), dtype=np.int64)
     for i, question in enumerate(questions):
         question_mat[i, :len(question)] = question
-    question_tensor = torch.Tensor(question_mat).to(device)
+    question_tensor = torch.tensor(question_mat).to(device)
     question_seq = rnn_utils.pack_padded_sequence(
         question_tensor, lengths, batch_first=True
     )
+    emb = embedding(question_seq.data)
     packed_question_seq = rnn_utils.PackedSequence(
-        embedding(question_seq.data),
-        question_seq.batch_size,
+        emb, question_seq.batch_sizes,
     )
 
     return packed_question_seq, questions, responces
 
-def input_mat_to_packed(input_mat, embedding, device='cpu'):
-    input_tensor = torch.Tensor([input_mat]).to(torch.long).to(device)
+def input_mat_to_packed(input_mat, embedding, device):
+    input_tensor = torch.LongTensor([input_mat]).to(device)
+    emb = embedding(input_tensor)
     return rnn_utils.pack_padded_sequence(
-        embedding(input_tensor),
-        [len(input_mat)], batch_first=True,
+        emb, [len(input_mat)], batch_first=True,
     )
 
-def pairs_to_packed_seq(batch, embedding, device='cpu'):
+def pairs_to_packed_seq(batch, embedding, device):
     packed_question_seq, questions, responces = pairs_to_packed_seq_without_out(batch, embedding, device)
     packed_responce_seqs = list()
     for responce in responces:
         # do not use last responce
         # because next answer does not exist.
-        responce = input_mat_to_packed(responce[:-1], embedding, device)
-        packed_responce_seqs.append(responce)
+        resp = input_mat_to_packed(responce[:-1], embedding, device)
+        packed_responce_seqs.append(resp)
     
     return packed_question_seq, packed_responce_seqs, questions, responces
 
@@ -203,8 +208,8 @@ def load_dialogue_and_dict(genre_filter, max_length=MAX_LENGTH, min_token_freq=M
     freqency_set = set(
         [key for key, val in counter.items() if val >= min_token_freq]
     )
-    log.info(f"Dialogues include {len(counter)} unique words in total.")
     emb_dict = generate_emb_dict(phrase_pairs, freqency_set)
+    log.info(f"Dialogues include {len(counter)} unique words in total.| emb_dict_size: {len(emb_dict)}")
 
     return phrase_pairs, emb_dict
     
