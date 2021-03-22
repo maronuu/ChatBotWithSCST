@@ -38,10 +38,6 @@ class Seq2seqModel(nn.Module):
         _, hidden = self.encoder(x)
         return hidden
     
-    def get_encoded_item(self, encoded, index):
-        item0 = encoded[0][:, index:index+1].contiguous()
-        item1 = encoded[1][:, index:index+1].contiguous()
-        return (item0, item1)
     
     def decode_train_data(self, hidden, input_seq):
         out, _ = self.decoder(input_seq, hidden)
@@ -85,3 +81,8 @@ class Seq2seqModel(nn.Module):
                 break
         
         return (torch.cat(logit_list), action_list)
+
+    def get_encoded_item(self, encoded, index):
+        item0 = encoded[0][:, index:index+1].contiguous()
+        item1 = encoded[1][:, index:index+1].contiguous()
+        return (item0, item1)

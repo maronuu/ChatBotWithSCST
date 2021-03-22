@@ -73,7 +73,8 @@ class TrainerCrossEntropy:
             logits, actions = self.net.decode_sequences(
                 hidden=hidden,
                 length=data.MAX_LENGTH,
-                init_emb=seq[0:1],
+                init_emb=seq.data[0:1],
+                mode='argmax',
                 end_of_decoding=eof,
             )
             total_bleu += utils.calc_bleu_score_for_seq(actions, phrase2[1:])  # omit first token of reference sequence
@@ -124,7 +125,7 @@ class TrainerCrossEntropy:
                 output_list = list()  # output list
                 ref_list = list()  # reference(target) list
                 for i, responce_seq in enumerate(packed_responce_seqs):
-                    hidden = (encoded[0][:, i:i+1].contiguous(), encoded[1][:, i:i+1].contiguous())
+                    hidden = self.net.get_encoded_item(encoded, i)
                     
                     ref_seq = responces[i][1:]  # omit first token.
 
@@ -193,6 +194,7 @@ class TrainerReinforce:
         if (not is_cuda_available) and use_cuda:
             raise RuntimeError("GPU is not available, but you tried to use it.")
         self.use_cuda = use_cuda
+        self.name_of_run = name_of_run
         self.log = log
         self.n_epochs = n_epochs
         self.n_samples = n_samples
@@ -204,7 +206,7 @@ class TrainerReinforce:
         self.device = torch.device('cuda' if self.use_cuda else 'cpu')
         
         # save directory
-        self.path_to_save_dir = os.path.join(SAVE_DIR, name_of_run)
+        self.path_to_save_dir = os.path.join(SAVE_DIR, self.name_of_run)
         os.makedirs(self.path_to_save_dir, exist_ok=True)
 
         # load training data and embedding dict
@@ -213,7 +215,7 @@ class TrainerReinforce:
         # embedding dict
         data.save_emb_dict(self.path_to_save_dir, self.emb_dict)
         self.rev_emb_dict = {idx: word for word, idx in self.emb_dict.items()}
-        self.begin_token = torch.Tensor([self.emb_dict[data.BEGIN]]).to(torch.long).to(self.device)
+        self.begin_token = torch.LongTensor([self.emb_dict[data.BEGIN]]).to(self.device)
         # train data
         self.train_data = data.encode_phrase_pairs(dialogues, self.emb_dict)
         self.random_state.shuffle(self.train_data)
@@ -255,11 +257,12 @@ class TrainerReinforce:
             logits, actions = self.net.decode_sequences(
                 hidden=hidden,
                 length=data.MAX_LENGTH,
-                init_emb=seq[0:1],
+                init_emb=seq.data[0:1],
+                mode='argmax',
                 end_of_decoding=eof,
             )
-            ref_seq = [t[1:] for t in phrase2]
-            total_bleu += utils.calc_bleu_score_for_seq(actions, ref_seq)  # omit first token of reference sequence
+            ref_seqs = [t[1:] for t in phrase2]
+            total_bleu += utils.calc_bleu_score_for_seqs(actions, ref_seqs)  # omit first token of reference sequence
             num_bleu += 1
         
         return total_bleu / num_bleu
@@ -332,8 +335,8 @@ class TrainerReinforce:
                 for i, question in enumerate(questions):
                     ### ENCODING & DECODING START
                     num_total_samples += 1
-                    hidden = (encoded[j][:, i:i+1].contiguous() for j in [0, 1])
-                    ref_seqs = [responce[1:] for responce in responces]  # omit first token.
+                    hidden = self.net.get_encoded_item(encoded, i)
+                    ref_seqs = [responce[1:] for responce in responces[i]]  # omit first token.
 
                     # act in detereminstic way
                     logits_argmax, actions_argmax = self.net.decode_sequences(

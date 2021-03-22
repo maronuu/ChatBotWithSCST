@@ -116,13 +116,14 @@ def batch_iterator(data, batch_size):
 
 def ph_ph_pairs_to_ph_phs_pairs(phrase_pairs):
     # phrase_pairs : input data.
-    phrase2phrase_list = defaultdict(list)
+    phrase2phrases = defaultdict(list)
     for phrase1, phrase2 in phrase_pairs:
-        tmp = phrase2phrase_list[phrase1]
+        # cast list -> tuple (list is unhashable)
+        tmp = phrase2phrases[tuple(phrase1)]
         tmp.append(phrase2)
-    phrase2phrase_list = list(phrase2phrase_list.items())
+    phrase2phrases = list(phrase2phrases.items())
 
-    return phrase2phrase_list
+    return phrase2phrases
 
 def train_test_split(data, test_size=None, train_size=None):
     if test_size is None and train_size is None:
